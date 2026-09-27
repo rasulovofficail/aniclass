@@ -7,6 +7,7 @@ from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 )
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -27,6 +28,11 @@ logger = logging.getLogger(__name__)
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
+
+# FSM States
+class BotStates(StatesGroup):
+    waiting_search = State()
+    waiting_broadcast = State()
 
 # ==================== DATABASE ====================
 async def init_db():
@@ -157,7 +163,8 @@ def format_anime(anime: dict) -> str:
 
 # ==================== HANDLERS ====================
 @dp.message(CommandStart())
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, state: FSMContext):
+    await state.clear()
     user = message.from_user
     await add_user(user.id, user.username, user.full_name)
 
@@ -188,7 +195,8 @@ async def check_sub_callback(callback: CallbackQuery):
         await callback.answer("❌ Hali barcha kanallarga obuna bo‘lmadingiz!", show_alert=True)
 
 @dp.callback_query(F.data == "back_main")
-async def back_to_main(callback: CallbackQuery):
+async def back_to_main(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
     await callback.message.edit_text(
         "<b>🏠 Asosiy menyu</b>\n\nQuyidagilardan birini tanlang:",
         reply_markup=main_menu()
@@ -200,9 +208,9 @@ async def search_anime_handler(callback: CallbackQuery, state: FSMContext):
         "🔍 <b>Anime qidirish</b>\n\nAnime nomini yozing:",
         reply_markup=back_button()
     )
-    await state.set_state("waiting_search")
+    await state.set_state(BotStates.waiting_search)
 
-@dp.message(F.text, F.state == "waiting_search")
+@dp.message(BotStates.waiting_search, F.text)
 async def process_search(message: Message, state: FSMContext):
     query = message.text.strip()
     await message.answer("⏳ Qidirilmoqda...")
@@ -312,7 +320,8 @@ Savollar bo‘lsa admin bilan bog‘laning.
 
 # ==================== ADMIN PANEL ====================
 @dp.message(Command("admin"))
-async def admin_panel(message: Message):
+async def admin_panel(message: Message, state: FSMContext):
+    await state.clear()
     if message.from_user.id not in ADMIN_IDS:
         return
 
@@ -340,9 +349,9 @@ async def broadcast_start(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
     await message.answer("📢 Yubormoqchi bo‘lgan xabaringizni yozing:")
-    await state.set_state("waiting_broadcast")
+    await state.set_state(BotStates.waiting_broadcast)
 
-@dp.message(F.state == "waiting_broadcast")
+@dp.message(BotStates.waiting_broadcast, F.text)
 async def process_broadcast(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
